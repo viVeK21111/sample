@@ -339,6 +339,34 @@ export default function Home() {
       </div>
     );
   }
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      const { error } = await supabase
+        .from('sessions')
+        .delete()
+        .eq('session_id', sessionId);
+  
+      if (error) throw error;
+  
+      // Remove session from users table
+      const { error: userError } = await supabase
+        .from('users')
+        .delete()
+        .eq('session_id', sessionId);
+  
+      if (userError) throw userError;
+  
+      // Update sessions and current session
+      setSessions(sessions.filter(session => session.session_id !== sessionId));
+      if (currentSession?.session_id === sessionId) {
+        setCurrentSession(sessions[0] || null);
+        fetchMessages(sessions[0]?.session_id || '');
+      }
+    } catch (error) {
+      console.error('Error deleting session:', error);
+      setError('Failed to delete session');
+    }
+  };
 
   return (
     <div className="container-fluid vh-100 d-flex flex-row bg-light p-0 position-relative">
@@ -383,25 +411,37 @@ export default function Home() {
         </button>
 
         <div className="flex-grow-1 overflow-auto mb-3">
-          {Array.from(new Map(sessions.map(s => [s.session_id, s])).values()).map((session, idx, arr) => (
-            <button
-              key={session.session_id}
-              onClick={() => handleSessionSelect(session)}
-              className={`btn w-100 text-start mb-2 p-3 ${
-                session.session_id === currentSession?.session_id ? 'btn-primary' : 'btn-outline-secondary'
-              }`}
-            >
-              <div className="text-truncate fw-bold">Session {arr.length - idx}</div>
-              <div className="small text-muted">{new Date(session.created_at).toLocaleDateString()}</div>
-            </button>
-          ))}
+        {sessions.map((session, idx, arr) => (
+  <button
+    key={session.session_id}
+    onClick={() => handleSessionSelect(session)}
+    className={`btn w-100 text-start mb-2 p-3 d-flex justify-content-between align-items-center ${
+      session.session_id === currentSession?.session_id ? 'btn-primary' : 'btn-outline-secondary'
+    }`}
+  >
+    <div>
+      <div className="text-truncate fw-bold">Session {arr.length - idx}</div>
+      <div className="small text-muted">{new Date(session.created_at).toLocaleDateString()}</div>
+    </div>
+    <span
+      onClick={(e) => {
+        e.stopPropagation();
+        handleDeleteSession(session.session_id);
+      }}
+      className="ms-2 "
+      style={{ cursor: 'pointer' }}
+    >
+      ×
+    </span>
+  </button>
+))}
         </div>
 
         <div className="mt-auto">
           <div className="d-flex align-items-center mb-3 p-2 border rounded">
             {user.picture ? (
               <div style={{ width: 40, height: 40, position: 'relative' }} className="me-3">
-                <Image
+            <Image
                   src={user.picture}
                   alt={user.name || 'User'}
                   className="rounded-circle"
@@ -558,7 +598,7 @@ export default function Home() {
               disabled={isGeneratingImage}
             >
               <option value="text">Text</option>
-              <option value="image" disabled>Image</option>
+              <option value="image">Image</option>
             </select>
             <textarea
               value={input}
