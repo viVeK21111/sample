@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { supabase, type Message, type Session } from '@/lib/supabase';
 import { generateText, generateImage } from '@/lib/gemini';
+import ReactMarkdown from 'react-markdown';
 
 export default function Home() {
   const { user, error: authError, isLoading: authLoading } = useUser();
@@ -30,12 +31,13 @@ export default function Home() {
       if (data && data.length > 0) {
         setSessions(data);
         setCurrentSession(data[0]); // most recent session
-        fetchMessages(data[0].id);
+        fetchMessages(data[0].session_id); // Use session_id from users table
       } else {
         // No sessions, create one for new user
         await createNewSession();
       }
     } catch (error) {
+      console.error('Error fetching sessions:', error);
       setError('Failed to load chat sessions');
     }
   };
@@ -56,6 +58,7 @@ export default function Home() {
       // After creating, re-fetch all sessions to update sidebar and set current
       await fetchSessions();
     } catch (error) {
+      console.error('Error creating session:', error);
       setError('Failed to create new chat');
     }
   };
@@ -67,11 +70,40 @@ export default function Home() {
         .from('sessions')
         .select('*')
         .eq('session_id', sessionId)
-        .order('created_at', { ascending: true }) as { data: Message[]; error: any };
-      // Only set error if there is a real error and not just empty results
-      if (error && Array.isArray(data) && data.length > 0) throw error;
-      setMessages(data || []);
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        console.error('Error fetching messages:', error);
+        throw error;
+      }
+      
+      // Convert sessions data to Message format for UI
+      const convertedMessages: Message[] = (data || []).flatMap(session => [
+        {
+          id: `user-${session.id}`,
+          user_id: user?.sub || '',
+          session_id: sessionId,
+          role: 'user' as const,
+          content: session.query,
+          query: session.query,
+          datatext: session.query,
+          created_at: session.created_at,
+        },
+        ...(session.datatext && session.datatext !== session.query ? [{
+          id: `assistant-${session.id}`,
+          user_id: user?.sub || '',
+          session_id: sessionId,
+          role: 'assistant' as const,
+          content: session.datatext,
+          query: session.query,
+          datatext: session.datatext,
+          created_at: session.created_at,
+        }] : [])
+      ]);
+      
+      setMessages(convertedMessages);
     } catch (error) {
+      console.error('Error in fetchMessages:', error);
       setError('Failed to load messages');
     }
   };
@@ -85,15 +117,26 @@ export default function Home() {
     setIsLoading(true);
 
     // 1. Fetch previous messages for this session (for Gemini history)
-    let history: Message[] = [];
+    let history: any[] = [];
     try {
-      const { data: historyData } = await supabase
+      const { data: historyData, error } = await supabase
         .from('sessions')
         .select('*')
-        .eq('session_id', currentSession.id)
-        .order('created_at', { ascending: true }) as { data: Message[]; error: any };
-      if (historyData) history = historyData;
+        .eq('session_id', currentSession.session_id)
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        console.error('Error fetching history:', error);
+      } else if (historyData) {
+        // Convert to format expected by Gemini
+        history = historyData.map(session => ({
+          role: 'user',
+          content: session.query,
+          datatext: session.datatext
+        }));
+      }
     } catch (err) {
+      console.error('Error in history fetch:', err);
       history = [];
     }
 
@@ -101,7 +144,7 @@ export default function Home() {
     const userMessageUI: Message = {
       id: crypto.randomUUID(),
       user_id: user?.sub || '',
-      session_id: currentSession.id,
+      session_id: currentSession.session_id,
       role: 'user',
       content: input,
       query: input,
@@ -111,18 +154,19 @@ export default function Home() {
     const loadingAssistantUI: Message = {
       id: 'loading-' + crypto.randomUUID() + '-' + Date.now(),
       user_id: user?.sub || '',
-      session_id: currentSession.id,
+      session_id: currentSession.session_id,
       role: 'assistant',
       content: '...',
       datatext: '...',
       created_at: new Date().toISOString(),
     };
     setMessages(prev => [...prev, userMessageUI, loadingAssistantUI]);
+    const currentInput = input;
     setInput('');
 
     try {
       // 3. Call Gemini with previous history for this session
-      const response = await generateText(input, history);
+      const response = await generateText(currentInput, history);
 
       // 4. Update the UI: replace the loading assistant message with the real response
       setMessages(prev =>
@@ -133,17 +177,28 @@ export default function Home() {
         )
       );
 
-      // 5. Insert a single row into Supabase with both query and datatext
-      await supabase
+      // 5. Insert a single row into Supabase sessions table
+      const { data, error } = await supabase
         .from('sessions')
         .insert([{
-          session_id: currentSession?.id,
-          query: input,
+          session_id: currentSession.session_id, // Use session_id from users table
+          query: currentInput,
           datatext: response,
           created_at: new Date().toISOString(),
-        }]);
+        }])
+        .select();
+
+      if (error) {
+        console.error('Supabase insertion error:', error);
+        throw error;
+      }
+      
+      console.log('Successfully inserted into sessions:', data);
+      
     } catch (err) {
-      setError('Failed to add to database');
+      console.error('Error in handleSendMessage:', err);
+      setError('Failed to send message');
+      // Remove the loading message on error
       setMessages(prev => prev.filter(msg => msg.id !== loadingAssistantUI.id));
     } finally {
       setIsLoading(false);
@@ -153,59 +208,64 @@ export default function Home() {
   const handleGenerateImage = async () => {
     if (!input.trim() || !currentSession) return;
 
-    const userMessageDb = {
-      user_id: user?.sub || '',
-      session_id: currentSession.id,
-      query: input,
-      datatext: input,
-      created_at: new Date().toISOString(),
-    };
-    const userMessage: Message = {
-      id: crypto.randomUUID(),
-      user_id: userMessageDb.user_id,
-      session_id: userMessageDb.session_id,
-      role: 'user',
-      content: input,
-      query: input,
-      datatext: input,
-      created_at: userMessageDb.created_at,
-    };
-
-    setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsGeneratingImage(true);
     setError(null);
 
+    // Add user message to UI
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      user_id: user?.sub || '',
+      session_id: currentSession.session_id,
+      role: 'user',
+      content: currentInput,
+      query: currentInput,
+      datatext: currentInput,
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, userMessage]);
+
     try {
-      await supabase.from('sessions').insert([userMessageDb]);
+      // Fetch history for image generation
       const { data: historyData } = await supabase
         .from('sessions')
         .select('*')
-        .eq('user_id', user?.sub)
+        .eq('session_id', currentSession.session_id)
         .order('created_at', { ascending: true });
 
-      const imageResponse = await generateImage(input, historyData || []);
-      const assistantMessageDb = {
+      const imageResponse = await generateImage(currentInput, historyData || []);
+      
+      // Add assistant message to UI
+      const assistantMessage: Message = {
+        id: crypto.randomUUID(),
         user_id: user?.sub || '',
-        session_id: currentSession.id,
-        query: input,
+        session_id: currentSession.session_id,
+        role: 'assistant',
+        content: imageResponse,
+        query: currentInput,
         datatext: imageResponse,
         created_at: new Date().toISOString(),
       };
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        user_id: assistantMessageDb.user_id,
-        session_id: assistantMessageDb.session_id,
-        role: 'assistant',
-        content: imageResponse,
-        query: input,
-        datatext: imageResponse,
-        created_at: assistantMessageDb.created_at,
-      };
-
-      await supabase.from('sessions').insert([assistantMessageDb]);
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Insert into database
+      const { error } = await supabase
+        .from('sessions')
+        .insert([{
+          session_id: currentSession.session_id,
+          query: currentInput,
+          datatext: imageResponse,
+          created_at: new Date().toISOString(),
+        }]);
+
+      if (error) {
+        console.error('Error inserting image session:', error);
+        throw error;
+      }
+
     } catch (error) {
+      console.error('Error generating image:', error);
       setError('Failed to generate image');
     } finally {
       setIsGeneratingImage(false);
@@ -217,6 +277,11 @@ export default function Home() {
     if (user) fetchSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   if (authLoading) {
     return (
@@ -266,14 +331,14 @@ export default function Home() {
           <span>New Chat</span>
         </button>
         <div className="flex-grow-1 overflow-auto mb-3">
-          {Array.from(new Map(sessions.map(s => [s.id, s])).values()).map((session, idx, arr) => (
+          {Array.from(new Map(sessions.map(s => [s.session_id, s])).values()).map((session, idx, arr) => (
             <button
-              key={session.id}
+              key={session.session_id}
               onClick={() => {
                 setCurrentSession(session);
-                fetchMessages(session.id);
+                fetchMessages(session.session_id);
               }}
-              className={`btn w-100 text-start mb-2 ${session.id === currentSession?.id ? 'btn-primary' : 'btn-outline-secondary'}`}
+              className={`btn w-100 text-start mb-2 ${session.session_id === currentSession?.session_id ? 'btn-primary' : 'btn-outline-secondary'}`}
             >
               <div className="text-truncate">Session {arr.length - idx}</div>
               <div className="small text-muted">{new Date(session.created_at).toLocaleDateString()}</div>
@@ -307,7 +372,7 @@ export default function Home() {
         </header>
 
         {/* Error Message */}
-        {error && messages.length > 0 && (
+        {error && (
           <div className="alert alert-danger m-3">{error}</div>
         )}
 
@@ -329,12 +394,43 @@ export default function Home() {
                 <div key={msg.id} className={`d-flex ${msg.role === 'user' ? 'justify-content-end' : 'justify-content-start'}`}>
                   <div className={`card ${msg.role === 'user' ? 'bg-primary text-white' : ''}`} style={{ maxWidth: '75%' }}>
                     <div className="card-body p-3">
-                      <div className="card-text">{msg.content}</div>
+                      <div className="card-text">
+                        {msg.role === 'user' ? (
+                          msg.content
+                        ) : (
+                          <ReactMarkdown
+                            components={{
+                              // Style code blocks
+                              code: ({ node, inline, className, children, ...props }) => {
+                                return inline ? (
+                                  <code className="bg-light px-1 rounded" {...props}>
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <pre className="bg-light p-2 rounded">
+                                    <code className={className} {...props}>
+                                      {children}
+                                    </code>
+                                  </pre>
+                                );
+                              },
+                              // Style links
+                              a: ({ node, children, ...props }) => (
+                                <a className="text-primary" {...props}>
+                                  {children}
+                                </a>
+                              ),
+                            }}
+                          >
+                            {msg.content}
+                          </ReactMarkdown>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               ))}
-              {isGeneratingImage && (
+              {(isGeneratingImage || isLoading) && (
                 <div className="d-flex justify-content-start">
                   <div className="card" style={{ maxWidth: '75%' }}>
                     <div className="card-body p-3">
@@ -354,7 +450,7 @@ export default function Home() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-               console.log('Form submitted, selectedModel:', selectedModel, 'input:', input);
+              console.log('Form submitted, selectedModel:', selectedModel, 'input:', input);
               if (selectedModel === 'text') {
                 handleSendMessage(e);
               } else {
