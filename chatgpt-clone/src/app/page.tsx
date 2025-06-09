@@ -47,7 +47,7 @@ export default function Home() {
   // Create a new session for the user
   const createNewSession = async () => {
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('users')
         .insert([
           {
@@ -171,7 +171,7 @@ export default function Home() {
       );
 
       // 5. Insert a single row into Supabase sessions table
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('sessions')
         .insert([{
           session_id: currentSession.session_id, // Use session_id from users table
@@ -185,8 +185,6 @@ export default function Home() {
         console.error('Supabase insertion error:', error);
         throw error;
       }
-      
-      console.log('Successfully inserted into sessions:', data);
       
     } catch (err) {
       console.error('Error in handleSendMessage:', err);
@@ -392,7 +390,7 @@ export default function Home() {
                   <span className="display-6 text-primary">💬</span>
                 </div>
                 <h3 className="h6 mb-2">Start a conversation</h3>
-                <p className="text-muted">Ask me anything and I'll do my best to help!</p>
+                <p className="text-muted">Ask me anything and I&apos;ll do my best to help!</p>
               </div>
             </div>
           ) : (
