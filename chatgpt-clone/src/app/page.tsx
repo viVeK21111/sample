@@ -379,7 +379,7 @@ export default function Home() {
           className="btn btn-outline-light w-100 mb-3 d-flex flex-column align-items-center py-3"
         >
           <span className="display-4">+</span>
-          <span>New Chat</span>
+          <span>{currentSession?.title || 'New Chat'}</span>
         </button>
 
         <div className="flex-grow-1 overflow-auto mb-3">
@@ -445,9 +445,15 @@ export default function Home() {
           >
             ☰
           </button>
-          
+          {/* Show session name as 'Session X' */}
           <h1 className="h5 mb-0 text-truncate flex-grow-1">
-            {currentSession?.title || 'New Chat'}
+            {(() => {
+              if (!currentSession) return '';
+              const uniqueSessions = Array.from(new Map(sessions.map(s => [s.session_id, s])).values());
+              const idx = uniqueSessions.findIndex(s => s.session_id === currentSession.session_id);
+              if (idx === -1) return '';
+              return `Session ${uniqueSessions.length - idx}`;
+            })()}
           </h1>
         </header>
 
