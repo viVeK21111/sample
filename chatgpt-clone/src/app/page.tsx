@@ -548,45 +548,43 @@ export default function Home() {
                 handleGenerateImage();
               }
             }}
-            className="d-flex flex-column flex-sm-row gap-2 align-items-stretch align-items-sm-end"
+            className="d-flex gap-2 align-items-end"
           >
             <select
-              className="form-select order-1 order-sm-0"
+              className="form-select flex-shrink-0"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value as 'text' | 'image')}
-              style={{ maxWidth: '100%', minWidth: '100px' }}
+              style={{ width: 110, minWidth: 80 }}
+              disabled={isGeneratingImage}
             >
               <option value="text">Text</option>
-              <option value="image">Image</option>
+              <option value="image" disabled>Image</option>
             </select>
-            
-            <div className="flex-grow-1 order-0 order-sm-1">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder={selectedModel === 'text' ? "Message AI..." : "Describe the image you want..."}
-                className="form-control"
-                style={{ 
-                  minHeight: 50, 
-                  maxHeight: 200, 
-                  resize: 'none',
-                  fontSize: '16px' // Prevent zoom on iOS
-                }}
-                disabled={isGeneratingImage || isLoading}
-                rows={2}
-              />
-            </div>
-            
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={selectedModel === 'text' ? "Message AI..." : "Describe the image you want..."}
+              className="form-control flex-grow-1"
+              style={{
+                minHeight: 80,
+                maxHeight: 300,
+                resize: 'vertical',
+                fontSize: '16px',
+                width: '100%',
+                marginRight: 0
+              }}
+              disabled={isGeneratingImage || isLoading}
+              rows={3}
+            />
             <button
               type="submit"
               disabled={!input.trim() || isGeneratingImage || isLoading}
-              className="btn btn-primary order-2 flex-shrink-0"
-              style={{ minWidth: '70px' }}
+              className="btn btn-primary flex-shrink-0"
+              style={{ minWidth: '70px', height: 48 }}
             >
               Send
             </button>
           </form>
-          
           <div className="form-text text-center mt-2 small">
             AI can make mistakes. Consider checking important information.
           </div>
