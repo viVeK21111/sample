@@ -38,7 +38,13 @@ interface Message {
 }
 
 const convertMessagesToHistory = (messages: Message[]) => {
-  return messages.map(item => ({
+  // Ensure the first message is from the user
+  let filtered = [...messages];
+  while (filtered.length > 0 && filtered[0].role !== 'user') {
+    filtered.shift();
+  }
+  // Optionally, remove any leading non-user messages
+  return filtered.map(item => ({
     role: item.role === 'user' ? 'user' : 'model',
     parts: [{ text: item.role === 'user' ? item.query || item.content : item.datatext || item.content }]
   }));
@@ -59,9 +65,10 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Starting chat with Gemini...');
-    
+    const geminiHistory = convertMessagesToHistory(history);
+    console.log('Final Gemini history:', geminiHistory);
     const chat = textModel.startChat({
-      history: convertMessagesToHistory(history),
+      history: geminiHistory,
       safetySettings,
     });
     
