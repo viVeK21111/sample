@@ -39,7 +39,7 @@ interface Message {
 
 const convertMessagesToHistory = (messages: Message[]) => {
   // Ensure the first message is from the user
-  let filtered = [...messages];
+  const filtered = [...messages];
   while (filtered.length > 0 && filtered[0].role !== 'user') {
     filtered.shift();
   }
