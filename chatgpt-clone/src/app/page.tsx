@@ -19,6 +19,7 @@ export default function Home() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [selectedModel, setSelectedModel] = useState<'text' | 'image'>('text');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Fetch all sessions for the user (on load)
   const fetchSessions = async () => {
@@ -59,6 +60,8 @@ export default function Home() {
       if (error) throw error;
       // After creating, re-fetch all sessions to update sidebar and set current
       await fetchSessions();
+      // Close sidebar on mobile after creating new session
+      setIsSidebarOpen(false);
     } catch (error) {
       console.error('Error creating session:', error);
       setError('Failed to create new chat');
@@ -263,6 +266,12 @@ export default function Home() {
     }
   };
 
+  const handleSessionSelect = (session: Session) => {
+    setCurrentSession(session);
+    fetchMessages(session.session_id);
+    setIsSidebarOpen(false); // Close sidebar on mobile after selection
+  };
+
   // Ensure sessions are fetched on page load or when user changes
   useEffect(() => {
     if (user) fetchSessions();
@@ -274,6 +283,27 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Close sidebar when clicking outside on mobile
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const sidebar = document.getElementById('sidebar');
+      const hamburger = document.getElementById('hamburger-btn');
+      
+      if (isSidebarOpen && sidebar && !sidebar.contains(event.target as Node) && 
+          hamburger && !hamburger.contains(event.target as Node)) {
+        setIsSidebarOpen(false);
+      }
+    };
+
+    if (isSidebarOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isSidebarOpen]);
+
   if (authLoading) {
     return (
       <div className="d-flex align-items-center justify-content-center vh-100 bg-light">
@@ -283,7 +313,7 @@ export default function Home() {
   }
 
   if (authError) {
-  return (
+    return (
       <div className="d-flex align-items-center justify-content-center vh-100 bg-light">
         <div className="text-danger text-center">
           <h2 className="h4 mb-2">Authentication Error</h2>
@@ -311,35 +341,66 @@ export default function Home() {
   }
 
   return (
-    <div className="container-fluid vh-100 d-flex flex-row bg-light p-0">
+    <div className="container-fluid vh-100 d-flex flex-row bg-light p-0 position-relative">
+      {/* Mobile Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="position-fixed w-100 h-100 bg-dark bg-opacity-50 d-lg-none"
+          style={{ zIndex: 1040 }}
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <div className="bg-dark text-white p-3 d-flex flex-column" style={{ width: 260, minHeight: '100vh' }}>
+      <div 
+        id="sidebar"
+        className={`bg-dark text-white p-3 d-flex flex-column ${
+          isSidebarOpen ? 'position-fixed' : 'd-none d-lg-flex position-lg-relative'
+        }`}
+        style={{ 
+          width: 280, 
+          minHeight: '100vh',
+          zIndex: 1050,
+          left: isSidebarOpen ? 0 : undefined,
+          transition: 'left 0.3s ease-in-out'
+        }}
+      >
+        {/* Mobile close button */}
+        <button
+          className="btn btn-outline-light align-self-end mb-2 d-lg-none"
+          onClick={() => setIsSidebarOpen(false)}
+          style={{ width: 'auto' }}
+        >
+          ✕
+        </button>
+
         <button
           onClick={createNewSession}
-          className="btn btn-outline-light w-100 mb-3 d-flex flex-column align-items-center"
+          className="btn btn-outline-light w-100 mb-3 d-flex flex-column align-items-center py-3"
         >
           <span className="display-4">+</span>
           <span>New Chat</span>
         </button>
+
         <div className="flex-grow-1 overflow-auto mb-3">
           {Array.from(new Map(sessions.map(s => [s.session_id, s])).values()).map((session, idx, arr) => (
             <button
               key={session.session_id}
-              onClick={() => {
-                setCurrentSession(session);
-                fetchMessages(session.session_id);
-              }}
-              className={`btn w-100 text-start mb-2 ${session.session_id === currentSession?.session_id ? 'btn-primary' : 'btn-outline-secondary'}`}
+              onClick={() => handleSessionSelect(session)}
+              className={`btn w-100 text-start mb-2 p-3 ${
+                session.session_id === currentSession?.session_id ? 'btn-primary' : 'btn-outline-secondary'
+              }`}
             >
-              <div className="text-truncate">Session {arr.length - idx}</div>
+              <div className="text-truncate fw-bold">Session {arr.length - idx}</div>
               <div className="small text-muted">{new Date(session.created_at).toLocaleDateString()}</div>
             </button>
           ))}
         </div>
+
         <div className="mt-auto">
-          <div className="d-flex align-items-center mb-2">
+          <div className="d-flex align-items-center mb-3 p-2 border rounded">
             {user.picture ? (
-              <div style={{ width: 40, height: 40, position: 'relative' }}>
+              <div style={{ width: 40, height: 40, position: 'relative' }} className="me-3">
                 <Image
                   src={user.picture}
                   alt={user.name || 'User'}
@@ -347,45 +408,59 @@ export default function Home() {
                   fill
                   sizes="40px"
                   style={{ objectFit: 'cover' }}
-                  unoptimized // Add this for external images
+                  unoptimized
                 />
               </div>
             ) : (
               <div 
-                className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2"
+                className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-3"
                 style={{ width: 40, height: 40 }}
               >
-                <span className="text-white">
+                <span className="text-white fw-bold">
                   {user.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
                 </span>
               </div>
             )}
-            <div>
+            <div className="flex-grow-1 min-w-0">
               <div className="fw-bold text-truncate">{user.name || user.email}</div>
               <div className="small text-muted text-truncate">{user.email}</div>
             </div>
           </div>
-          <Link href="/api/auth/logout" className="btn btn-outline-light w-100">Sign Out</Link>
+          <Link href="/api/auth/logout" className="btn btn-outline-light w-100">
+            Sign Out
+          </Link>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="flex-grow-1 d-flex flex-column h-100">
+      <div className="flex-grow-1 d-flex flex-column h-100" style={{ minWidth: 0 }}>
         {/* Header */}
         <header className="bg-white border-bottom p-3 d-flex align-items-center justify-content-between sticky-top">
-          <h1 className="h5 mb-0">{currentSession?.title || 'New Chat'}</h1>
+          {/* Mobile hamburger menu */}
+          <button
+            id="hamburger-btn"
+            className="btn btn-outline-secondary d-lg-none me-2"
+            onClick={() => setIsSidebarOpen(true)}
+            style={{ minWidth: 'auto' }}
+          >
+            ☰
+          </button>
+          
+          <h1 className="h5 mb-0 text-truncate flex-grow-1">
+            {currentSession?.title || 'New Chat'}
+          </h1>
         </header>
 
         {/* Error Message */}
         {error && (
-          <div className="alert alert-danger m-3">{error}</div>
+          <div className="alert alert-danger m-3 mx-2 mx-sm-3">{error}</div>
         )}
 
         {/* Chat Messages */}
-        <div className="flex-grow-1 overflow-auto p-3">
+        <div className="flex-grow-1 overflow-auto p-2 p-sm-3">
           {messages?.length === 0 ? (
             <div className="d-flex align-items-center justify-content-center h-100">
-              <div className="text-center w-100" style={{ maxWidth: 400 }}>
+              <div className="text-center w-100 px-3" style={{ maxWidth: 400 }}>
                 <div className="bg-primary bg-opacity-10 rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" style={{ width: 64, height: 64 }}>
                   <span className="display-6 text-primary">💬</span>
                 </div>
@@ -397,22 +472,28 @@ export default function Home() {
             <div className="d-flex flex-column gap-3">
               {messages.map((msg) => (
                 <div key={msg.id} className={`d-flex ${msg.role === 'user' ? 'justify-content-end' : 'justify-content-start'}`}>
-                  <div className={`card ${msg.role === 'user' ? 'bg-primary text-white' : ''}`} style={{ maxWidth: '75%' }}>
-                    <div className="card-body p-3">
+                  <div 
+                    className={`card ${msg.role === 'user' ? 'bg-primary text-white' : ''}`} 
+                    style={{ 
+                      maxWidth: '85%',
+                      minWidth: '200px'
+                    }}
+                  >
+                    <div className="card-body p-2 p-sm-3">
                       <div className="card-text">
                         {msg.role === 'user' ? (
-                          msg.content
+                          <div style={{ wordBreak: 'break-word' }}>{msg.content}</div>
                         ) : (
                           <ReactMarkdown
                             components={{
                               code: ({ className, children, ...props }) => {
                                 const isInline = !className?.includes('language-');
                                 return isInline ? (
-                                  <code className="bg-light px-1 rounded" {...props}>
+                                  <code className="bg-light px-1 rounded text-dark" {...props}>
                                     {children}
                                   </code>
                                 ) : (
-                                  <pre className="bg-light p-2 rounded">
+                                  <pre className="bg-light p-2 rounded text-dark overflow-auto">
                                     <code className={className} {...props}>
                                       {children}
                                     </code>
@@ -436,8 +517,8 @@ export default function Home() {
               ))}
               {(isGeneratingImage || isLoading) && (
                 <div className="d-flex justify-content-start">
-                  <div className="card" style={{ maxWidth: '75%' }}>
-                    <div className="card-body p-3">
+                  <div className="card" style={{ maxWidth: '85%' }}>
+                    <div className="card-body p-2 p-sm-3">
                       <div className="spinner-border text-secondary me-2" role="status" style={{ width: 20, height: 20 }}></div>
                       <span className="text-muted">Thinking...</span>
                     </div>
@@ -450,7 +531,7 @@ export default function Home() {
         </div>
 
         {/* Input Area */}
-        <div className="border-top bg-white p-3">
+        <div className="border-top bg-white p-2 p-sm-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -461,34 +542,46 @@ export default function Home() {
                 handleGenerateImage();
               }
             }}
-            className="d-flex gap-2 align-items-end"
+            className="d-flex flex-column flex-sm-row gap-2 align-items-stretch align-items-sm-end"
           >
             <select
-              className="form-select w-auto"
+              className="form-select order-1 order-sm-0"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value as 'text' | 'image')}
-              style={{ maxWidth: 120 }}
+              style={{ maxWidth: '100%', minWidth: '100px' }}
             >
               <option value="text">Text</option>
               <option value="image">Image</option>
             </select>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={selectedModel === 'text' ? "Message AI..." : "Describe the image you want..."}
-              className="form-control"
-              style={{ minHeight: 50, maxHeight: 200, resize: 'none' }}
-              disabled={isGeneratingImage || isLoading}
-            />
+            
+            <div className="flex-grow-1 order-0 order-sm-1">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={selectedModel === 'text' ? "Message AI..." : "Describe the image you want..."}
+                className="form-control"
+                style={{ 
+                  minHeight: 50, 
+                  maxHeight: 200, 
+                  resize: 'none',
+                  fontSize: '16px' // Prevent zoom on iOS
+                }}
+                disabled={isGeneratingImage || isLoading}
+                rows={2}
+              />
+            </div>
+            
             <button
               type="submit"
               disabled={!input.trim() || isGeneratingImage || isLoading}
-              className="btn btn-primary"
+              className="btn btn-primary order-2 flex-shrink-0"
+              style={{ minWidth: '70px' }}
             >
               Send
             </button>
           </form>
-          <div className="form-text text-center mt-2">
+          
+          <div className="form-text text-center mt-2 small">
             AI can make mistakes. Consider checking important information.
           </div>
         </div>
