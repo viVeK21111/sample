@@ -23,17 +23,17 @@ export default function Home() {
   // Fetch all sessions for the user (on load)
   const fetchSessions = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: sessionsData, error } = await supabase
         .from('users')
         .select('*')
         .eq('user_id', user?.sub)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      if (data && data.length > 0) {
-        setSessions(data);
-        setCurrentSession(data[0]); // most recent session
-        fetchMessages(data[0].session_id); // Use session_id from users table
+      if (sessionsData && sessionsData.length > 0) {
+        setSessions(sessionsData);
+        setCurrentSession(sessionsData[0]); // most recent session
+        fetchMessages(sessionsData[0].session_id);
       } else {
         // No sessions, create one for new user
         await createNewSession();
