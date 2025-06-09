@@ -9,7 +9,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 export async function testSupabaseConnection() {
   try {
     console.log('Testing Supabase connection...');
-    const { data, error } = await supabase.from('sessions').select('count').limit(1);
+    const { error } = await supabase.from('sessions').select('count').limit(1);
     
     if (error) {
       console.error('Supabase connection test failed:', error);
@@ -27,7 +27,8 @@ export async function testSupabaseConnection() {
 export type Session = {
   id: string;
   user_id: string;
-  title: string;
+  session_id: string;
+  title?: string;
   created_at: string;
   updated_at: string;
 };

@@ -5,6 +5,8 @@ import { useUser } from '@auth0/nextjs-auth0/client';
 import { supabase, type Message, type Session } from '@/lib/supabase';
 import { generateText, generateImage } from '@/lib/gemini';
 import ReactMarkdown from 'react-markdown';
+import Link from 'next/link';
+import Image from 'next/image';
 
 export default function Home() {
   const { user, error: authError, isLoading: authLoading } = useUser();
@@ -117,24 +119,15 @@ export default function Home() {
     setIsLoading(true);
 
     // 1. Fetch previous messages for this session (for Gemini history)
-    let history: any[] = [];
+    let history: Message[] = [];
     try {
-      const { data: historyData, error } = await supabase
+      const { data: historyData } = await supabase
         .from('sessions')
         .select('*')
         .eq('session_id', currentSession.session_id)
         .order('created_at', { ascending: true });
       
-      if (error) {
-        console.error('Error fetching history:', error);
-      } else if (historyData) {
-        // Convert to format expected by Gemini
-        history = historyData.map(session => ({
-          role: 'user',
-          content: session.query,
-          datatext: session.datatext
-        }));
-      }
+      if (historyData) history = historyData;
     } catch (err) {
       console.error('Error in history fetch:', err);
       history = [];
@@ -308,12 +301,12 @@ export default function Home() {
         <div className="text-center w-100" style={{ maxWidth: 400 }}>
           <h1 className="display-5 fw-bold mb-3">Welcome to AI Chat</h1>
           <p className="text-secondary mb-4">Experience the power of AI conversation</p>
-          <a
+          <Link
             href="/api/auth/login"
             className="btn btn-primary btn-lg w-100"
           >
             Get Started
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -347,20 +340,34 @@ export default function Home() {
         </div>
         <div className="mt-auto">
           <div className="d-flex align-items-center mb-2">
-            {user.picture && (
-              <img
-                src={user.picture}
-                alt={user.name || 'User'}
-                className="rounded-circle me-2"
+            {user.picture ? (
+              <div style={{ width: 40, height: 40, position: 'relative' }}>
+                <Image
+                  src={user.picture}
+                  alt={user.name || 'User'}
+                  className="rounded-circle"
+                  fill
+                  sizes="40px"
+                  style={{ objectFit: 'cover' }}
+                  unoptimized // Add this for external images
+                />
+              </div>
+            ) : (
+              <div 
+                className="rounded-circle bg-primary d-flex align-items-center justify-content-center me-2"
                 style={{ width: 40, height: 40 }}
-              />
+              >
+                <span className="text-white">
+                  {user.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
+                </span>
+              </div>
             )}
             <div>
-              <div className="fw-bold text-truncate">{user.name}</div>
+              <div className="fw-bold text-truncate">{user.name || user.email}</div>
               <div className="small text-muted text-truncate">{user.email}</div>
             </div>
           </div>
-          <a href="/api/auth/logout" className="btn btn-outline-light w-100">Sign Out</a>
+          <Link href="/api/auth/logout" className="btn btn-outline-light w-100">Sign Out</Link>
         </div>
       </div>
 
@@ -400,9 +407,9 @@ export default function Home() {
                         ) : (
                           <ReactMarkdown
                             components={{
-                              // Style code blocks
-                              code: ({ node, inline, className, children, ...props }) => {
-                                return inline ? (
+                              code: ({ className, children, ...props }) => {
+                                const isInline = !className?.includes('language-');
+                                return isInline ? (
                                   <code className="bg-light px-1 rounded" {...props}>
                                     {children}
                                   </code>
@@ -414,8 +421,7 @@ export default function Home() {
                                   </pre>
                                 );
                               },
-                              // Style links
-                              a: ({ node, children, ...props }) => (
+                              a: ({ children, ...props }) => (
                                 <a className="text-primary" {...props}>
                                   {children}
                                 </a>
