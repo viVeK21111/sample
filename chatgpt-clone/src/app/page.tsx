@@ -598,7 +598,7 @@ export default function Home() {
               disabled={isGeneratingImage}
             >
               <option value="text">Text</option>
-              <option value="image">Image</option>
+              <option value="image" disabled>Image</option>
             </select>
             <textarea
               value={input}
