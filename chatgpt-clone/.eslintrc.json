@@ -3,6 +3,7 @@
   "rules": {
     "@typescript-eslint/no-require-imports": "error",
     "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-explicit-any": ["error", { "ignoreRestArgs": true }],
     "react/no-unescaped-entities": "off"
   }
 } 
