@@ -577,7 +577,7 @@ export default function Home() {
         </div>
 
         {/* Input Area */}
-        <div className="border-top bg-white p-2 p-sm-3">
+        <div className="border-top position-relative bg-white p-2 p-sm-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -591,10 +591,10 @@ export default function Home() {
             className="d-flex gap-2 align-items-end"
           >
             <select
-              className="form-select flex-shrink-0"
+              className="form-select position-absolute margin-rounded"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value as 'text' | 'image')}
-              style={{ width: 110, minWidth: 80 }}
+              style={{ width: 80,height:35, minWidth: 60, position: 'absolute', right:94 }}
               disabled={isGeneratingImage}
             >
               <option value="text">Text</option>
